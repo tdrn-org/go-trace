@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"os"
+	"path/filepath"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -39,13 +41,16 @@ func Start(ctx context.Context, cfg *TracingConfig) (Provider, error) {
 	if err != nil {
 		return nil, err
 	}
-	serviceName := resource.NewWithAttributes(semconv.SchemaURL, semconv.ServiceName(cfg.ServiceName))
+	serviceName := cfg.ServiceName
+	if serviceName == "" {
+		serviceName = filepath.Base(os.Args[0])
+	}
+	serviceNameResource := resource.NewWithAttributes(semconv.SchemaURL, semconv.ServiceName(serviceName))
 	traceProvider := tracesdk.NewTracerProvider(
 		withBatcher(exporter, time.Duration(cfg.BatchTimeout), time.Duration(cfg.ExportTimeout)),
-		tracesdk.WithResource(serviceName))
+		tracesdk.WithResource(serviceNameResource))
 	otel.SetTracerProvider(traceProvider)
 	provider := &otelProvider{
-		exporter:      exporter,
 		traceProvider: traceProvider,
 	}
 	slog.Info("tracing enabled")
