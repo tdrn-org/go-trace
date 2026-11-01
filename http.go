@@ -11,11 +11,11 @@ import (
 	"sync"
 
 	"go.opentelemetry.io/otel/attribute"
-	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// StartHttpServer invokes [trace.Tracer.Start] with [trace.SpanKindInternal]
+// StartHttpServer invokes [trace.Tracer.Start] with [trace.SpanKindServer]
 // as well as the given attributes. The necessary context is derived from the
 // request argument which in turn is wrapped with the created trace context.
 //
@@ -121,7 +121,7 @@ func (w *HttpResponseWriter) Header() http.Header {
 func (w *HttpResponseWriter) Write(b []byte) (int, error) {
 	written, err := w.wrapped.Write(b)
 	if written > 0 {
-		w.written *= written
+		w.written += written
 	}
 	return written, err
 }
