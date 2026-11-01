@@ -4,17 +4,17 @@
 // This software may be modified and distributed under the terms
 // of the MIT license. See the LICENSE file for details.
 
-package trace
+// Package provider contains convienence functions and types
+// to support easy setup of tracing.
+package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net/url"
 	"time"
 
-	"github.com/tdrn-org/go-trace/config"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -24,26 +24,14 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 )
 
+// Provider interface is used to access the configured tracing provider.
 type Provider interface {
+	// Shutdown shuts down the tracing provider.
 	Shutdown(ctx context.Context) error
 }
 
-type noopProvider struct{}
-
-func (p *noopProvider) Shutdown(_ context.Context) error {
-	return nil
-}
-
-type otelProvider struct {
-	exporter      *otlptrace.Exporter
-	traceProvider *tracesdk.TracerProvider
-}
-
-func (p *otelProvider) Shutdown(ctx context.Context) error {
-	return errors.Join(p.traceProvider.Shutdown(ctx), p.exporter.Shutdown(ctx))
-}
-
-func StartProvider(ctx context.Context, cfg *config.TracingConfig) (Provider, error) {
+// Start setups and starts tracing using the given configuration.
+func Start(ctx context.Context, cfg *TracingConfig) (Provider, error) {
 	if !cfg.Enabled {
 		return &noopProvider{}, nil
 	}
@@ -72,11 +60,11 @@ func withBatcher(exporter *otlptrace.Exporter, batchTimeout time.Duration, expor
 	return tracesdk.WithBatcher(exporter, opts...)
 }
 
-func newExporter(ctx context.Context, cfg *config.TracingConfig) (*otlptrace.Exporter, error) {
+func newExporter(ctx context.Context, cfg *TracingConfig) (*otlptrace.Exporter, error) {
 	switch cfg.Protocol {
-	case config.TracingProtocolHttp:
+	case TracingProtocolHttp:
 		return newHttpExporter(ctx, cfg.EndpointURL.URL, cfg.Headers)
-	case config.TracingProtocolGRPC:
+	case TracingProtocolGRPC:
 		return newGRPCExporter(ctx, cfg.EndpointURL.URL, cfg.Headers)
 	default:
 		return nil, fmt.Errorf("unrecognized tracing protocol: %q", cfg.Protocol)

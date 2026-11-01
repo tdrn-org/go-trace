@@ -4,11 +4,12 @@
 // This software may be modified and distributed under the terms
 // of the MIT license. See the LICENSE file for details.
 
+// Package trace provides utility functions and types
+// for easy instrumenting of applications.
 package trace
 
 import (
 	"context"
-	"net/http"
 	"reflect"
 	"runtime"
 	"strings"
@@ -16,48 +17,65 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
+// TracePoint wraps a [trace.Tracer] object to support
+// tracing of an applications control point.
 type TracePoint struct {
+	name   string
 	tracer trace.Tracer
 }
 
-func NewTracePoint[T any](opts ...trace.TracerOption) *TracePoint {
+// NewTracePoint create a new [TracePoint] using the given type argument as
+// the tracer name, the given name argument as the default span name and the
+// given options as is.
+//
+// In case the default span name is empty, the span name is automatically
+// derived from the call hierarchy.
+func NewTracePoint[T any](name string, opts ...trace.TracerOption) *TracePoint {
 	return &TracePoint{
+		name:   name,
 		tracer: otel.Tracer(reflect.TypeFor[T]().PkgPath(), opts...),
 	}
 }
 
+// StartInternal invokes [trace.Tracer.Start] with [trace.SpanKindInternal]
+// as well as the given attributes.
 func (t *TracePoint) StartInternal(ctx context.Context, attributes ...attribute.KeyValue) (context.Context, trace.Span) {
-	return t.start(ctx, trace.SpanKindInternal, attributes...)
+	return t.start(ctx, trace.WithSpanKind(trace.SpanKindInternal), trace.WithAttributes(attributes...))
 }
 
+// StartServer invokes [trace.Tracer.Start] with [trace.SpanKindServer]
+// as well as the given attributes.
 func (t *TracePoint) StartServer(ctx context.Context, attributes ...attribute.KeyValue) (context.Context, trace.Span) {
-	return t.start(ctx, trace.SpanKindServer, attributes...)
+	return t.start(ctx, trace.WithSpanKind(trace.SpanKindServer), trace.WithAttributes(attributes...))
 }
 
-func (p *TracePoint) StartHttpServer(req *http.Request, attributes ...attribute.KeyValue) (*http.Request, trace.Span) {
-	traceCtx, span := p.start(req.Context(), trace.SpanKindServer, attributes...)
-	SetHttpRequest(span, req)
-	return req.WithContext(traceCtx), span
-}
-
+// StartClient invokes [trace.Tracer.Start] with [trace.SpanKindClient]
+// as well as the given attributes.
 func (t *TracePoint) StartClient(ctx context.Context, attributes ...attribute.KeyValue) (context.Context, trace.Span) {
-	return t.start(ctx, trace.SpanKindClient, attributes...)
+	return t.start(ctx, trace.WithSpanKind(trace.SpanKindClient), trace.WithAttributes(attributes...))
 }
 
+// StartProducer invokes [trace.Tracer.Start] with [trace.SpanKindProducer]
+// as well as the given attributes.
 func (t *TracePoint) StartProducer(ctx context.Context, attributes ...attribute.KeyValue) (context.Context, trace.Span) {
-	return t.start(ctx, trace.SpanKindProducer, attributes...)
+	return t.start(ctx, trace.WithSpanKind(trace.SpanKindProducer), trace.WithAttributes(attributes...))
 }
 
-func (t *TracePoint) StartConsuming(ctx context.Context, attributes ...attribute.KeyValue) (context.Context, trace.Span) {
-	return t.start(ctx, trace.SpanKindConsumer, attributes...)
+// StartConsumer invokes [trace.Tracer.Start] with [trace.SpanKindConsumer]
+// as well as the given attributes.
+func (t *TracePoint) StartConsumer(ctx context.Context, attributes ...attribute.KeyValue) (context.Context, trace.Span) {
+	return t.start(ctx, trace.WithSpanKind(trace.SpanKindConsumer), trace.WithAttributes(attributes...))
 }
 
-func (t *TracePoint) start(ctx context.Context, kind trace.SpanKind, attributes ...attribute.KeyValue) (context.Context, trace.Span) {
-	return t.tracer.Start(ctx, callerName(), trace.WithSpanKind(kind), trace.WithAttributes(attributes...))
+func (t *TracePoint) start(ctx context.Context, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	name := t.name
+	if name == "" {
+		name = callerName()
+	}
+	return t.tracer.Start(ctx, name, opts...)
 }
 
 func callerName() string {
@@ -67,16 +85,7 @@ func callerName() string {
 	return split[len(split)-1]
 }
 
-func SetHttpRequest(span trace.Span, req *http.Request) {
-	span.SetAttributes(attribute.String(string(semconv.HTTPRequestMethodKey), req.Method))
-	span.SetAttributes(attribute.String(string(semconv.URLPathKey), req.URL.Path))
-	span.SetAttributes(attribute.String(string(semconv.URLSchemeKey), req.URL.Scheme))
-}
-
-func SetHttpResponse(span trace.Span, rsp *http.Response) {
-	span.SetAttributes(attribute.Int(string(semconv.HTTPResponseStatusCodeKey), rsp.StatusCode))
-}
-
+// SetStatus sets the given span's status based on the given error.
 func SetStatus(span trace.Span, err error) error {
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
